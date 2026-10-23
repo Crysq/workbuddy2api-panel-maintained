@@ -74,7 +74,10 @@ func TestClassify(t *testing.T) {
 		{401, `{"code":12153,"msg":"Offline user session not found, rate limit"}`, ErrSessionDead},
 		{401, `Offline user session not found`, ErrSessionDead},
 		{401, `{"code":12153,"msg":"Offline user session not found"}`, ErrSessionDead},
-		{401, `{"code":9999,"msg":"bad token"}`, ErrClient},
+		// 普通 401 / APISIX "401 Authorization Required" HTML 同样是 token 失效终态：
+		// 旧实现归 ErrClient 只换号不禁用，坏号会反复占用轮转名额。
+		{401, `{"code":9999,"msg":"bad token"}`, ErrSessionDead},
+		{401, `<html><head><title>401 Authorization Required</title></head><body><center><h1>401 Authorization Required</h1></center><hr><center>openresty</center></body></html>`, ErrSessionDead},
 		{500, `boom`, ErrServer},
 		{503, `unavailable`, ErrServer},
 		{200, ``, ErrNone},

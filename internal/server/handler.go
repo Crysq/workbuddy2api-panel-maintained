@@ -28,6 +28,11 @@ import (
 	"github.com/linguo2625469/workbuddy2api-panel/internal/usage"
 )
 
+// maxSessionDeadSwitches 单请求内因 401/session dead 额外换号的上限。
+// 死号已禁用，不应占用 MaxRotate 里健康号的尝试名额；但必须有硬上限，
+// 防止池中大量坏号把单个请求拖成无限轮转。
+const maxSessionDeadSwitches = 8
+
 // Config handler 依赖。
 type Config struct {
 	Pool      *pool.Pool
@@ -803,6 +808,7 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	chatMeta.TraceID = r.Header.Get("X-Trace-ID")
 
+	deadSwitches := 0
 	for i := 0; i < h.cfg.MaxRotate; i++ {
 		// 选号：粘性号优先（PickByUIDForModel 已校验该模型可用性 + 在途未满），否则普通轮换。
 		var acct *auth.Auth
@@ -1049,6 +1055,17 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 			lastErr = &upstream.Error{Kind: kind, Status: status, Msg: string(respBody), RetryAfter: uerr.RetryAfter}
 			h.applyErrorPolicy(acct.UID, kind, string(respBody), bareModel, uerr)
 			fail(acct.UID)
+			// 401/session dead：applyErrorPolicy 已禁用该号。死号不是频控窗口，
+			// 不需要退避；同时不占用 MaxRotate 的名额，继续尝试下一个账号，
+			// 避免池内多个失效号把请求卡在 503（例如重登前的旧凭证）。
+			if kind == upstream.ErrSessionDead {
+				if deadSwitches < maxSessionDeadSwitches {
+					deadSwitches++
+					i-- // 归还本次轮转名额
+					continue
+				}
+				break
+			}
 			// WAF IP 级 fail-fast（优先于 rotateBackoff 退避——IP 级拦截时退避无意义）：
 			// 该次 WAF 403 喂入 IP 级状态机，若激活（短窗多号命中，IP 被拦而非账号）
 			// 则立即终止轮转——继续换号只会把请求放大 MaxRotate 倍打同一出口 IP，

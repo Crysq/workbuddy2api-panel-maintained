@@ -32,7 +32,7 @@ const (
 	ErrNone           ErrKind = iota // 成功
 	ErrHardCredit                    // 余额不足（402 或 body 关键词）→ 长冷却
 	ErrSoftRate                      // 429 软限流 → 短冷却
-	ErrSessionDead                   // 401 + 12153 offline session 失效 → 禁用
+	ErrSessionDead                   // 401（含 12153/APISIX 401）→ 禁用并换号，需重新登录
 	ErrNotFound                      // 404 上游偶发 → 短冷却，不累计错误计数（防雪崩）
 	ErrServer                        // 5xx 上游故障
 	ErrContentBlocked                // 内容策略拦截（400 + 审核文案）→ 不罚账号，走降级重试
@@ -573,6 +573,13 @@ func Classify(status int, body string) ErrKind {
 	// 402：真正的计费余额耗尽状态码，最严、最不可自愈，最先判。
 	if status == http.StatusPaymentRequired {
 		return ErrHardCredit
+	}
+	// 401：WorkBuddy 在 access/refresh token 失效、被吊销或账号被上游拒绝时，
+	// 可能返回 APISIX 的 "401 Authorization Required" HTML，而不是 12153 业务码。
+	// 这类账号只能重新登录；继续留在池里会被反复选中并占用轮转名额，必须按
+	// session dead 处理（handler 会禁用并换号，keepalive 走连续计数阈值）。
+	if status == http.StatusUnauthorized {
+		return ErrSessionDead
 	}
 	lower := strings.ToLower(body)
 	// sessionDead / accountFault 先于 status==429：账号级终态等不来自愈，限流状态码

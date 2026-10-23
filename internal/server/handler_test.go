@@ -868,6 +868,73 @@ func TestChatSessionDeadDisables(t *testing.T) {
 	}
 }
 
+// TestChat401HTMLRotatesToHealthyAndDisablesDead 复现线上形态：WorkBuddy 返回
+// APISIX "401 Authorization Required" HTML（不是 12153 业务码）。401 必须按
+// session dead 禁用死号，并在同一请求内切换到健康号返回 200。
+func TestChat401HTMLRotatesToHealthyAndDisablesDead(t *testing.T) {
+	const html401 = `<html><head><title>401 Authorization Required</title></head><body><center><h1>401 Authorization Required</h1></center><hr><center>openresty</center></body></html>`
+	up := newFakeUpstream(t, func(authz string) (int, string, bool) {
+		if authz == "Bearer at-dead" {
+			return 401, html401, false
+		}
+		return 200, sseOK, true
+	})
+	p := testPoolWith(
+		&auth.Auth{UID: "dead", AccessToken: "at-dead", ExpiresAt: 9999999999},
+		&auth.Auth{UID: "good", AccessToken: "at-good", ExpiresAt: 9999999999},
+	)
+	p.SetCredits("dead", 2000, 0) // dead 积分更高，确定性先选中
+	p.SetCredits("good", 1000, 0)
+	h := NewHandler(Config{Pool: p, Upstream: up})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"glm-5.2","messages":[]}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s (want 200 after rotate to good)", rec.Code, rec.Body)
+	}
+	stDead, _ := p.Status("dead")
+	if !stDead.Disabled {
+		t.Fatalf("401 account should be disabled: %+v", stDead)
+	}
+	stGood, _ := p.Status("good")
+	if stGood.Disabled || stGood.Cooling {
+		t.Fatalf("good account should stay healthy: %+v", stGood)
+	}
+}
+
+// TestChatManyDeadAccountsStillRotateToGood 池内失效号多于 MaxRotate 时，死号
+// 禁用后不占用健康号尝试名额，同一请求仍应继续切换到后面的可用号。
+func TestChatManyDeadAccountsStillRotateToGood(t *testing.T) {
+	const html401 = `<html><head><title>401 Authorization Required</title></head><body><center><h1>401 Authorization Required</h1></center><hr><center>openresty</center></body></html>`
+	up := newFakeUpstream(t, func(authz string) (int, string, bool) {
+		if strings.HasPrefix(authz, "Bearer at-dead") {
+			return 401, html401, false
+		}
+		return 200, sseOK, true
+	})
+	p := testPoolWith(
+		&auth.Auth{UID: "dead1", AccessToken: "at-dead1", ExpiresAt: 9999999999},
+		&auth.Auth{UID: "dead2", AccessToken: "at-dead2", ExpiresAt: 9999999999},
+		&auth.Auth{UID: "dead3", AccessToken: "at-dead3", ExpiresAt: 9999999999},
+		&auth.Auth{UID: "good", AccessToken: "at-good", ExpiresAt: 9999999999},
+	)
+	p.SetCredits("dead1", 4000, 0)
+	p.SetCredits("dead2", 3000, 0)
+	p.SetCredits("dead3", 2000, 0)
+	p.SetCredits("good", 1000, 0)
+	h := NewHandler(Config{Pool: p, Upstream: up}) // MaxRotate 默认 3，死号多于 3
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"glm-5.2","messages":[]}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s (want 200 after skipping dead accounts)", rec.Code, rec.Body)
+	}
+	for _, uid := range []string{"dead1", "dead2", "dead3"} {
+		st, _ := p.Status(uid)
+		if !st.Disabled {
+			t.Errorf("%s should be disabled: %+v", uid, st)
+		}
+	}
+}
+
 func TestChatTransportErrorDoesNotPenalize(t *testing.T) {
 	p := testPoolWith(&auth.Auth{UID: "u1", AccessToken: "at1", ExpiresAt: 9999999999})
 	up := &upstream.Client{
