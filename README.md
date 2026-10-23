@@ -19,19 +19,22 @@
 ---
 
 > [!IMPORTANT]
-> **项目已停止维护（2026-10-21）**：后续不再更新代码、不跟进上游变化、不再处理新的 issue / PR。
+> **维护状态：本仓库是上游停止维护后的延续分支（2026-10-24 起）**
 >
-> 原因有三：
-> 1. **上游已开始禁用反代**——WorkBuddy 对非官方客户端的识别与拦截正在收紧（通道校验、账号限制等），反代通道的稳定性与存活周期已不可控，继续做适配意义有限；
-> 2. **个人精力有限**——本项目本就是个人自用工具，无力长期跟进协议变化与风控对抗；
-> 3. **非法转卖泛滥**——发现大量批量注册小号、对外售卖额度、二次加壳 / 卡密分发的滥用行为，与本项目初衷完全相悖。
+> 原维护仓库 [linguo2625469/workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel) 已于 **2026-10-21** 在提交 `73a7560` 停止维护。本仓库以该提交为基线，仅做可独立验证的缺陷修复与文档维护：
 >
-> 仓库保持现状可用（已合入的修复不会回退），但请自行评估风险：**上游随时可能彻底收紧导致不可用**；因使用非官方客户端导致的账号风控 / 封禁，由使用者自行承担。
+> - 修复 v1.13.0 面板的实际故障：存在限流台账时，`rateLimitMeta` 中 `detail` 未声明，严格模式下抛 `ReferenceError`，导致账号池与模型锁池整表空白（原仓库 issue #241）；
+> - 前端切片测试统一改为 `'use strict'` 求值，避免同类未声明变量再次漏测；
+> - 版本号更新为 `1.13.1-panel`。
 >
-> **维护方式披露**：本仓库近期的 issue / PR 处置、代码审查、测试与修复实现**大量由 AI 辅助完成**（自动化编码 agent），合并与发布决策由维护者作出。请知悉后再使用或参与贡献。
+> **能力边界**：本仓库不做协议逆向对抗，也不承诺绕过 WorkBuddy 官方对非官方客户端的识别与拦截。若账号 refreshToken 被吊销（表现为 `upstream client (http 401)`），请重新登录获取新凭证；企业版 / 企业切换会话账号不支持个人成长体系与签到，属于上游限制。
+>
+> **风险提示**：上游随时可能进一步收紧导致不可用；因使用非官方客户端导致的账号风控 / 封禁，由使用者自行承担。仅限本人授权账号、本机或私有环境使用，**禁止批量注册、转售额度或加壳分发**。
+>
+> **维护方式披露**：本次缺陷修复、测试与文档更新由 AI 辅助完成（自动化编码 agent），发布决策由维护者作出。
 
-> **本项目是 [Sliverkiss/workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 的增强分支**（fork）。
-> 上游仓库现已删除；本项目**已同步至上游删库前的最后一次更新**（`ea8b1e5`），此后由本分支独立维护演进。
+> **本项目是 [Sliverkiss/workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 增强分支的延续 fork。**
+> 原始上游仓库已删除；增强分支 `linguo2625469/workbuddy2api-panel` 已于 2026-10-21 停止维护。本仓库以该分支的最终提交 `73a7560` 为基线，独立修复与发布。
 > 在上游基础上重构了可视化运维层；差异概览见 [与上游的差异](#-与上游的差异)，上游设计的精巧之处（账号池调度、错误分类、提示词体系）原样保留，详见下文。
 
 > ⚠️ **本项目仅限自用账号（签到 / 保活 / 个人工具接入），不支持同时也是禁止批量小号分发额度、二次打包或收费售卖。** 详见 [使用声明（必读）](#使用声明必读)。
@@ -247,7 +250,7 @@ mkdir -p auths data && cp config.example.json config.json
 docker run -d --name workbuddy2api \
   -p 7863:7863 -e TZ=Asia/Shanghai \
   -v ./auths:/app/auths -v ./data:/app/data -v ./config.json:/app/config.json \
-  ghcr.io/linguo2625469/workbuddy2api-panel:latest
+  ghcr.io/crysq/workbuddy2api-panel-maintained:latest
 
 # 3. 健康检查（无可用账号时返回 503）
 curl -s http://localhost:7863/healthz
@@ -263,7 +266,7 @@ curl -s http://localhost:7863/healthz
 
 ```bash
 # 1. 克隆
-git clone https://github.com/linguo2625469/workbuddy2api-panel.git
+git clone https://github.com/Crysq/workbuddy2api-panel-maintained.git
 cd workbuddy2api-panel
 
 # 2. 准备配置（compose 挂载此文件，缺失会导致容器启动失败）
