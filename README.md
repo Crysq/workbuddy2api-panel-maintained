@@ -18,6 +18,15 @@
 
 ---
 
+## 📌 项目来源与修改说明
+
+- **修改自**：[@linguo2625469](https://github.com/linguo2625469) 的 [workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel)
+- **基线提交**：`73a7560`（2026-10-21，原作者发布停止维护声明的最终版本）
+- **上游沿革**：原作者的项目基于 [Sliverkiss/workbuddy2api](https://github.com/Sliverkiss/workbuddy2api)（原仓库已删除）的增强分支
+- **本仓库性质**：原作者停止维护后的第三方延续 fork，**不是原作者官方仓库**，不代表原作者维护或背书
+- **本仓库改动**：修复面板限流台账导致的账号池 / 模型锁池空白（原 issue #241）、前端测试改用严格模式、版本号与文档更新；未引入任何第三方私有模块
+- **数据迁移**：部署时可沿用原项目的 `auths/`、`data/` 与 `config.json`
+
 > [!IMPORTANT]
 > **维护状态：本仓库是上游停止维护后的延续分支（2026-10-24 起）**
 >
